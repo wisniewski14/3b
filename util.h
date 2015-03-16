@@ -37,4 +37,12 @@ int dnslookup(const char* hostname,
 	      char* firstIPstr,
 	      int maxSize);
 
+int multidnslookup(const char* hostname,
+	      char* firstIPstr,
+	      int maxSize);
+
+int multi6dnslookup(const char* hostname,
+	      char* firstIPstr,
+	      int maxSize);
+
 #endif

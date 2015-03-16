@@ -22,11 +22,15 @@
 #define Q_SIZE 10
 #define NUM_THREADS 50
 
+int cores(){
+	return sysconf( _SC_NPROCESSORS_ONLN );
+}
+
 void* Requester_function(void* vpoint){
 	struct threadstuff* args = vpoint; 
 	const int qsize = Q_SIZE;
 	size_t bufsiz = SBUFSIZE;
-	char** names = malloc((Q_SIZE+1) * sizeof(char*));
+	char* names[Q_SIZE+1];// = malloc((Q_SIZE+1) * sizeof(char*));
 	int i,k;
 	for(i=0;i<=qsize;i++){
 		names[i] = malloc(SBUFSIZE * sizeof(char));
@@ -56,13 +60,13 @@ void* Requester_function(void* vpoint){
 	for(i=0;i<=qsize;i++){
 		free(names[i]);
 	}
-	free(names);
+	//free(names);
 	return NULL;
 }
 
 void* Resolver_function(void* vpoint){
 	struct threadstuff* args = vpoint; 
-	char firstipstr[INET6_ADDRSTRLEN];
+	char firstipstr[SBUFSIZE];//INET6_ADDRSTRLEN];
 	char outstr[SBUFSIZE];
 	char* name;
 	int i;//,nsiz;
@@ -79,12 +83,12 @@ void* Resolver_function(void* vpoint){
 			pthread_mutex_unlock(args->qlock);
 			//nsiz=strlen(outstr);
 		        /* Lookup hostname and get IP string */
-		        if(dnslookup(outstr, firstipstr, sizeof(firstipstr)) == UTIL_FAILURE){
+		        if(multi6dnslookup(outstr, firstipstr, sizeof(firstipstr)) == UTIL_FAILURE){
 			    fprintf(stderr, "dnslookup error: %s\n", outstr);
 			    strncpy(firstipstr, "", sizeof(firstipstr));
 		        }
 		        /* Write to Output File */
-			strcat(outstr,", ");
+			strcat(outstr,",");
 			strcat(outstr,firstipstr);
 			strcat(outstr,"\n");
 		        //fprintf(args->filep, "%s,%s\n", name, firstipstr);
@@ -117,19 +121,21 @@ int main(int argc, char* argv[]){
     /* Local Vars */
     queue* myQ = malloc(sizeof(queue));
     const int qsize = Q_SIZE;
+    const int numcores =3;// cores();
+	fprintf(stderr, "Cores: %d\n", numcores);
     int* finish = malloc((argc-2)*sizeof(int));
-    struct threadstuff** argarr = malloc(((argc-2)+NUM_THREADS)*sizeof(struct threadstuff*));
+    struct threadstuff** argarr = malloc(((argc-2)+numcores)*sizeof(struct threadstuff*));
     FILE** inputfp= malloc((argc-2)*sizeof(FILE*));
     FILE* outputfp = NULL;
     char errorstr[SBUFSIZE];
     int i;
-    pthread_t* threadid = malloc(((argc-2)+NUM_THREADS)*sizeof(pthread_t));
-    int* idcpy = malloc(((argc-2)+NUM_THREADS)*sizeof(int));
+    pthread_t* threadid = malloc(((argc-2)+numcores)*sizeof(pthread_t));
+    int* idcpy = malloc(((argc-2)+numcores)*sizeof(int));
     pthread_mutex_t* qlock = malloc(sizeof(pthread_mutex_t));
     pthread_mutex_t* flock = malloc(sizeof(pthread_mutex_t));
     pthread_cond_t* condv = malloc(sizeof(pthread_cond_t));
     pthread_cond_t* condf = malloc(sizeof(pthread_cond_t));
-    for(i=0;i<((argc-2)+NUM_THREADS);i++){
+    for(i=0;i<((argc-2)+numcores);i++){
         argarr[i] = malloc(sizeof(struct threadstuff));
     }
     pthread_mutex_init(qlock,NULL);
@@ -173,7 +179,7 @@ int main(int argc, char* argv[]){
         pthread_create(&(threadid[i]), NULL, Requester_function, argarr[i]);
     }
 
-    for(i=0;i<NUM_THREADS;i++){
+    for(i=0;i<numcores;i++){
 	idcpy[argc-2+i]=argc-2+i;
         argarr[argc-2+i]->filep = outputfp;
         argarr[argc-2+i]->queuep = myQ;
@@ -190,7 +196,7 @@ int main(int argc, char* argv[]){
     }
 
     /* Close Output File */
-    for(i=0;i<NUM_THREADS;i++){
+    for(i=0;i<numcores;i++){
         (void) pthread_join(threadid[argc-2+i], NULL);
     }
     fclose(outputfp);
@@ -200,7 +206,7 @@ int main(int argc, char* argv[]){
 	fclose(inputfp[i]);
     }
     // Free memory
-    for(i=0;i<((argc-2)+NUM_THREADS);i++){
+    for(i=0;i<((argc-2)+numcores);i++){
         free(argarr[i]);
     }
     queue_cleanup(myQ);
